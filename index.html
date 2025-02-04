@@ -1,105 +1,150 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Car Direction and Location</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    #map {
-      height: 100vh; /* Full screen height */
-      width: 100%;
-    }
-    .info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background-color: white;
-      padding: 10px;
-      border-radius: 5px;
-      z-index: 1000;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pelacak Arah</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
+        #map { height: calc(100vh - 100px); width: 100%; }
+        .info {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: white;
+            padding: 10px;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+            z-index: 1000;
+            text-align: center;
+        }
+        @media (min-width: 768px) {
+            .info { 
+                width: auto; 
+                right: 0;
+                left: auto;
+                bottom: 10px;
+                right: 10px;
+                border-radius: 5px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div id="info" class="info">
-    <p><strong>Arah Laju:</strong> <span id="direction">-</span></p>
-    <p><strong>Posisi Saat Ini:</strong> <span id="position">-</span></p>
-  </div>
+    <div id="map"></div>
+    <div id="info" class="info">
+        <p><strong>Arah Laju:</strong> <span id="direction">-</span></p>
+        <p><strong>Posisi Saat Ini:</strong> <span id="position">-</span></p>
+    </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    // Initialize the map
-    const map = L.map('map').setView([0, 0], 15); // Default view, akan diupdate dengan lokasi pengguna
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Fungsi untuk mengonversi derajat ke arah mata angin
+        const getCardinalDirection = (angle) => {
+            angle = (angle + 360) % 360;
+            const directions = [
+                { name: 'Utara', min: 337.5, max: 22.5 },
+                { name: 'Timur Laut', min: 22.5, max: 67.5 },
+                { name: 'Timur', min: 67.5, max: 112.5 },
+                { name: 'Tenggara', min: 112.5, max: 157.5 },
+                { name: 'Selatan', min: 157.5, max: 202.5 },
+                { name: 'Barat Daya', min: 202.5, max: 247.5 },
+                { name: 'Barat', min: 247.5, max: 292.5 },
+                { name: 'Barat Laut', min: 292.5, max: 337.5 }
+            ];
 
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+            for (let dir of directions) {
+                if (angle >= dir.min && angle < dir.max) {
+                    return `${dir.name} (${angle.toFixed(2)}°)`;
+                }
+            }
 
-    // Icon untuk mobil
-    const carIcon = L.icon({
-      iconUrl: 'https://cdn-icons-png.flaticon.com/512/55/55281.png', // Car icon
-      iconSize: [32, 32],
-      iconAnchor: [16, 16] // Pusat ikon
-    });
+            return 'Utara';
+        };
 
-    // Marker untuk mobil
-    let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
+        // Initialize the map
+        const map = L.map('map').setView([0, 0], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
 
-    // Variabel untuk menyimpan posisi sebelumnya
-    let previousPosition = null;
+        // Icon panah
+        const arrowIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div style="transform: rotate(0deg);">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="#1E90FF" stroke="#000" stroke-width="2">
+                    <path d="M12 2L2 22h20L12 2z"/>
+                </svg>
+            </div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
 
-    // Fungsi untuk mendapatkan arah dari dua titik
-    const getDirection = (from, to) => {
-      const deltaLng = to.lng - from.lng;
-      const deltaLat = to.lat - from.lat;
-      const angle = (Math.atan2(deltaLat, deltaLng) * 180) / Math.PI; // Sudut dalam derajat
-      return angle;
-    };
+        // Marker untuk posisi
+        let positionMarker = L.marker([0, 0], { icon: arrowIcon }).addTo(map);
+        let previousPosition = null;
 
-    // Fungsi untuk mengupdate posisi dan arah
-    const updatePositionAndDirection = (position) => {
-      const { latitude, longitude } = position.coords;
+        // Fungsi untuk mendapatkan arah dari dua titik
+        const getDirection = (from, to) => {
+            const deltaLng = to.lng - from.lng;
+            const deltaLat = to.lat - from.lat;
+            let angle = (Math.atan2(deltaLat, deltaLng) * 180) / Math.PI;
+            
+            if (angle < 0) angle += 360;
 
-      // Update posisi mobil
-      const newPosition = [latitude, longitude];
-      carMarker.setLatLng(newPosition);
+            return angle;
+        };
 
-      // Update posisi peta ke lokasi pengguna
-      map.setView(newPosition, 15);
+        // Fungsi untuk mengupdate posisi dan arah
+        const updatePositionAndDirection = (position) => {
+            const { latitude, longitude } = position.coords;
+            const newPosition = [latitude, longitude];
+            positionMarker.setLatLng(newPosition);
+            map.setView(newPosition, 15);
 
-      // Hitung arah jika ada posisi sebelumnya
-      if (previousPosition) {
-        const direction = getDirection(previousPosition, newPosition);
-        document.getElementById('direction').textContent = `${direction.toFixed(2)}°`;
-      }
+            // Hitung arah jika ada posisi sebelumnya
+            let directionText = '-';
+            let rotation = 0;
+            if (previousPosition) {
+                const direction = getDirection(
+                    { lat: previousPosition.lat, lng: previousPosition.lng }, 
+                    { lat: latitude, lng: longitude }
+                );
+                directionText = getCardinalDirection(direction);
+                rotation = direction;
+            }
 
-      // Simpan posisi saat ini sebagai posisi sebelumnya
-      previousPosition = { lat: latitude, lng: longitude };
+            // Putar ikon panah
+            document.querySelector('.custom-div-icon div').style.transform = `rotate(${rotation}deg)`;
 
-      // Tampilkan posisi saat ini
-      document.getElementById('position').textContent = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-    };
+            document.getElementById('direction').textContent = directionText;
+            document.getElementById('position').textContent = 
+                `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 
-    // Fungsi untuk menangani error geolocation
-    const handleGeolocationError = (error) => {
-      console.error('Error getting location:', error);
-      alert('Tidak dapat mendapatkan lokasi Anda. Pastikan GPS aktif.');
-    };
+            previousPosition = { lat: latitude, lng: longitude };
+        };
 
-    // Dapatkan lokasi pengguna secara real-time
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(updatePositionAndDirection, handleGeolocationError, {
-        enableHighAccuracy: true, // Gunakan GPS untuk akurasi tinggi
-        maximumAge: 0, // Jangan gunakan data lama
-        timeout: 5000 // Batas waktu untuk mendapatkan lokasi
-      });
-    } else {
-      alert('Browser Anda tidak mendukung Geolocation.');
-    }
-  </script>
+        // Fungsi untuk menangani error geolocation
+        const handleGeolocationError = (error) => {
+            console.error('Error getting location:', error);
+            alert('Tidak dapat mendapatkan lokasi Anda. Pastikan GPS aktif.');
+        };
+
+        // Dapatkan lokasi pengguna secara real-time
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                updatePositionAndDirection, 
+                handleGeolocationError, 
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 5000
+                }
+            );
+        } else {
+            alert('Browser Anda tidak mendukung Geolocation.');
+        }
+    </script>
 </body>
 </html>
