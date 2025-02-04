@@ -3,148 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pelacak Arah</title>
+    <title>Advanced Location Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
-        #map { height: calc(100vh - 100px); width: 100%; }
-        .info {
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            font-family: 'Arial', sans-serif; 
+            background-color: #f4f4f4;
+        }
+        #map { 
+            height: calc(100vh - 200px); 
+            width: 100%; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .info-container {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
             background-color: white;
-            padding: 10px;
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+            padding: 15px;
+            box-shadow: 0 -3px 10px rgba(0,0,0,0.1);
             z-index: 1000;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        .info-box {
             text-align: center;
+            margin: 5px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         @media (min-width: 768px) {
-            .info { 
-                width: auto; 
-                right: 0;
-                left: auto;
-                bottom: 10px;
-                right: 10px;
-                border-radius: 5px;
+            .info-container { 
+                border-radius: 10px;
+                margin: 10px;
+                width: calc(100% - 20px);
             }
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div id="info" class="info">
-        <p><strong>Arah Laju:</strong> <span id="direction">-</span></p>
-        <p><strong>Posisi Saat Ini:</strong> <span id="position">-</span></p>
+    <div class="info-container">
+        <div class="info-box">
+            <strong>Direction</strong>
+            <p id="direction">-</p>
+        </div>
+        <div class="info-box">
+            <strong>Position</strong>
+            <p id="position">-</p>
+        </div>
+        <div class="info-box">
+            <strong>Speed</strong>
+            <p id="speed">-</p>
+        </div>
+        <div class="info-box">
+            <strong>Accuracy</strong>
+            <p id="accuracy">-</p>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Fungsi untuk mengonversi derajat ke arah mata angin
-        const getCardinalDirection = (angle) => {
-            angle = (angle + 360) % 360;
-            const directions = [
-                { name: 'Utara', min: 337.5, max: 22.5 },
-                { name: 'Timur Laut', min: 22.5, max: 67.5 },
-                { name: 'Timur', min: 67.5, max: 112.5 },
-                { name: 'Tenggara', min: 112.5, max: 157.5 },
-                { name: 'Selatan', min: 157.5, max: 202.5 },
-                { name: 'Barat Daya', min: 202.5, max: 247.5 },
-                { name: 'Barat', min: 247.5, max: 292.5 },
-                { name: 'Barat Laut', min: 292.5, max: 337.5 }
-            ];
+        // Advanced Compass and Orientation Handling
+        class OrientationManager {
+            constructor() {
+                this.heading = null;
+                this.compassCalibration = {
+                    alpha: 0,
+                    beta: 0,
+                    gamma: 0
+                };
+                this.initializeOrientationListener();
+            }
 
-            for (let dir of directions) {
-                if (angle >= dir.min && angle < dir.max) {
-                    return `${dir.name} (${angle.toFixed(2)}°)`;
+            initializeOrientationListener() {
+                window.addEventListener('deviceorientation', this.handleOrientation.bind(this), false);
+            }
+
+            handleOrientation(event) {
+                if (event.webkitCompassHeading) {
+                    // iOS devices
+                    this.heading = event.webkitCompassHeading;
+                } else {
+                    // Other devices
+                    this.heading = this.compassHeading(
+                        event.alpha, 
+                        event.beta, 
+                        event.gamma
+                    );
                 }
             }
 
-            return 'Utara';
-        };
+            compassHeading(alpha, beta, gamma) {
+                // Advanced compass heading calculation
+                const alphaRad = (alpha || 0) * (Math.PI / 180);
+                const betaRad = (beta || 0) * (Math.PI / 180);
+                const gammaRad = (gamma || 0) * (Math.PI / 180);
 
-        // Initialize the map
+                const cA = Math.cos(alphaRad);
+                const sA = Math.sin(alphaRad);
+                const cB = Math.cos(betaRad);
+                const sB = Math.sin(betaRad);
+                const cG = Math.cos(gammaRad);
+                const sG = Math.sin(gammaRad);
+
+                const rA = -cA * sG - sA * sB * cG;
+                const rB = -sA * sG + cA * sB * cG;
+                const rC = -cB * cG;
+
+                let compassHeading = Math.atan(rA / rB);
+
+                if (rB < 0) compassHeading += Math.PI;
+                else if (rA < 0) compassHeading += 2 * Math.PI;
+
+                return (compassHeading * 180 / Math.PI + 360) % 360;
+            }
+
+            getCardinalDirection(angle) {
+                const directions = [
+                    { name: 'North', min: 337.5, max: 22.5 },
+                    { name: 'Northeast', min: 22.5, max: 67.5 },
+                    { name: 'East', min: 67.5, max: 112.5 },
+                    { name: 'Southeast', min: 112.5, max: 157.5 },
+                    { name: 'South', min: 157.5, max: 202.5 },
+                    { name: 'Southwest', min: 202.5, max: 247.5 },
+                    { name: 'West', min: 247.5, max: 292.5 },
+                    { name: 'Northwest', min: 292.5, max: 337.5 }
+                ];
+
+                for (let dir of directions) {
+                    if (angle >= dir.min && angle < dir.max) {
+                        return `${dir.name} (${angle.toFixed(2)}°)`;
+                    }
+                }
+
+                return 'North';
+            }
+        }
+
+        // Advanced Geolocation Tracker
+        class GeolocationTracker {
+            constructor(map) {
+                this.map = map;
+                this.previousPosition = null;
+                this.orientationManager = new OrientationManager();
+                this.positionMarker = null;
+                this.initializeMap();
+            }
+
+            initializeMap() {
+                this.positionMarker = L.marker([0, 0], { 
+                    icon: this.createRotatableArrowIcon() 
+                }).addTo(this.map);
+            }
+
+            createRotatableArrowIcon() {
+                return L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="transform: rotate(0deg);">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="#1E90FF" stroke="#000" stroke-width="2">
+                            <path d="M12 2L2 22h20L12 2z"/>
+                        </svg>
+                    </div>`,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20]
+                });
+            }
+
+            calculateBearing(from, to) {
+                const toRad = (deg) => deg * (Math.PI / 180);
+                const toDeg = (rad) => rad * (180 / Math.PI);
+
+                const lat1 = toRad(from.lat);
+                const lon1 = toRad(from.lng);
+                const lat2 = toRad(to.lat);
+                const lon2 = toRad(to.lng);
+
+                const dLon = lon2 - lon1;
+                const y = Math.sin(dLon) * Math.cos(lat2);
+                const x = Math.cos(lat1) * Math.sin(lat2) - 
+                          Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                
+                return (toDeg(Math.atan2(y, x)) + 360) % 360;
+            }
+
+            updatePositionAndDirection(position) {
+                const { latitude, longitude, speed, accuracy } = position.coords;
+                const newPosition = [latitude, longitude];
+
+                // Update UI elements
+                document.getElementById('position').textContent = 
+                    `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                document.getElementById('speed').textContent = 
+                    speed ? `${(speed * 3.6).toFixed(2)} km/h` : 'N/A';
+                document.getElementById('accuracy').textContent = 
+                    `${accuracy.toFixed(2)} m`;
+
+                // Update map view and marker
+                this.positionMarker.setLatLng(newPosition);
+                this.map.setView(newPosition, 15);
+
+                // Calculate direction
+                let directionText = '-';
+                let rotation = 0;
+
+                if (this.previousPosition) {
+                    const bearing = this.calculateBearing(
+                        { lat: this.previousPosition.lat, lng: this.previousPosition.lng }, 
+                        { lat: latitude, lng: longitude }
+                    );
+
+                    // Use compass heading if available, otherwise use calculated bearing
+                    const compassHeading = this.orientationManager.heading;
+                    rotation = compassHeading || bearing;
+
+                    directionText = this.orientationManager.getCardinalDirection(rotation);
+                }
+
+                // Rotate arrow icon
+                document.querySelector('.custom-div-icon div').style.transform = 
+                    `rotate(${rotation}deg)`;
+
+                document.getElementById('direction').textContent = directionText;
+
+                this.previousPosition = { 
+                    lat: latitude, 
+                    lng: longitude 
+                };
+            }
+
+            startTracking() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.watchPosition(
+                        this.updatePositionAndDirection.bind(this), 
+                        this.handleGeolocationError, 
+                        {
+                            enableHighAccuracy: true,
+                            maximumAge: 0,
+                            timeout: 5000
+                        }
+                    );
+                } else {
+                    alert('Geolocation is not supported by your browser.');
+                }
+            }
+
+            handleGeolocationError(error) {
+                console.error('Geolocation error:', error);
+                alert('Unable to retrieve your location. Please check GPS settings.');
+            }
+        }
+
+        // Initialize map
         const map = L.map('map').setView([0, 0], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Icon panah
-        const arrowIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div style="transform: rotate(0deg);">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="#1E90FF" stroke="#000" stroke-width="2">
-                    <path d="M12 2L2 22h20L12 2z"/>
-                </svg>
-            </div>`,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
-        });
-
-        // Marker untuk posisi
-        let positionMarker = L.marker([0, 0], { icon: arrowIcon }).addTo(map);
-        let previousPosition = null;
-
-        // Fungsi untuk mendapatkan arah dari dua titik
-        const getDirection = (from, to) => {
-            const deltaLng = to.lng - from.lng;
-            const deltaLat = to.lat - from.lat;
-            let angle = (Math.atan2(deltaLat, deltaLng) * 180) / Math.PI;
-            
-            if (angle < 0) angle += 360;
-
-            return angle;
-        };
-
-        // Fungsi untuk mengupdate posisi dan arah
-        const updatePositionAndDirection = (position) => {
-            const { latitude, longitude } = position.coords;
-            const newPosition = [latitude, longitude];
-            positionMarker.setLatLng(newPosition);
-            map.setView(newPosition, 15);
-
-            // Hitung arah jika ada posisi sebelumnya
-            let directionText = '-';
-            let rotation = 0;
-            if (previousPosition) {
-                const direction = getDirection(
-                    { lat: previousPosition.lat, lng: previousPosition.lng }, 
-                    { lat: latitude, lng: longitude }
-                );
-                directionText = getCardinalDirection(direction);
-                rotation = direction;
-            }
-
-            // Putar ikon panah
-            document.querySelector('.custom-div-icon div').style.transform = `rotate(${rotation}deg)`;
-
-            document.getElementById('direction').textContent = directionText;
-            document.getElementById('position').textContent = 
-                `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-
-            previousPosition = { lat: latitude, lng: longitude };
-        };
-
-        // Fungsi untuk menangani error geolocation
-        const handleGeolocationError = (error) => {
-            console.error('Error getting location:', error);
-            alert('Tidak dapat mendapatkan lokasi Anda. Pastikan GPS aktif.');
-        };
-
-        // Dapatkan lokasi pengguna secara real-time
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(
-                updatePositionAndDirection, 
-                handleGeolocationError, 
-                {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 5000
-                }
-            );
-        } else {
-            alert('Browser Anda tidak mendukung Geolocation.');
-        }
+        // Start tracking
+        const tracker = new GeolocationTracker(map);
+        tracker.startTracking();
     </script>
 </body>
 </html>
