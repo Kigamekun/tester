@@ -155,6 +155,7 @@
                 this.previousPosition = null;
                 this.orientationManager = new OrientationManager();
                 this.positionMarker = null;
+                this.smoothPosition = null;
                 this.initializeMap();
             }
 
@@ -194,21 +195,35 @@
                 return (toDeg(Math.atan2(y, x)) + 360) % 360;
             }
 
+            smoothPositionUpdate(newPosition) {
+                if (!this.smoothPosition) {
+                    this.smoothPosition = newPosition;
+                } else {
+                    const alpha = 0.3; // Smoothing factor
+                    this.smoothPosition.lat = alpha * newPosition.lat + (1 - alpha) * this.smoothPosition.lat;
+                    this.smoothPosition.lng = alpha * newPosition.lng + (1 - alpha) * this.smoothPosition.lng;
+                }
+                return this.smoothPosition;
+            }
+
             updatePositionAndDirection(position) {
                 const { latitude, longitude, speed, accuracy } = position.coords;
-                const newPosition = [latitude, longitude];
+                const newPosition = { lat: latitude, lng: longitude };
+
+                // Smooth position update
+                const smoothedPosition = this.smoothPositionUpdate(newPosition);
 
                 // Update UI elements
                 document.getElementById('position').textContent = 
-                    `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                    `${smoothedPosition.lat.toFixed(6)}, ${smoothedPosition.lng.toFixed(6)}`;
                 document.getElementById('speed').textContent = 
                     speed ? `${(speed * 3.6).toFixed(2)} km/h` : 'N/A';
                 document.getElementById('accuracy').textContent = 
                     `${accuracy.toFixed(2)} m`;
 
                 // Update map view and marker
-                this.positionMarker.setLatLng(newPosition);
-                this.map.setView(newPosition, 15);
+                this.positionMarker.setLatLng([smoothedPosition.lat, smoothedPosition.lng]);
+                this.map.setView([smoothedPosition.lat, smoothedPosition.lng], 15);
 
                 // Calculate direction
                 let directionText = '-';
@@ -216,8 +231,8 @@
 
                 if (this.previousPosition) {
                     const bearing = this.calculateBearing(
-                        { lat: this.previousPosition.lat, lng: this.previousPosition.lng }, 
-                        { lat: latitude, lng: longitude }
+                        this.previousPosition, 
+                        smoothedPosition
                     );
 
                     // Use compass heading if available, otherwise use calculated bearing
@@ -233,10 +248,10 @@
 
                 document.getElementById('direction').textContent = directionText;
 
-                this.previousPosition = { 
-                    lat: latitude, 
-                    lng: longitude 
-                };
+                this.previousPosition = smoothedPosition;
+
+                // Request next frame for smooth animation
+                requestAnimationFrame(() => this.updatePositionAndDirection(position));
             }
 
             startTracking() {
